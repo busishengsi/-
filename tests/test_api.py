@@ -1,4 +1,5 @@
 import io
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -90,6 +91,33 @@ class ApiFlowTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["data"]["category"], "digital")
+
+    def test_system_status_and_health_headers(self):
+        health = self.client.get("/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.get_json()["database"], "ready")
+        self.assertEqual(health.headers["X-App-Version"], backend.APP_VERSION)
+        self.assertIn("X-Process-Time-Ms", health.headers)
+
+        status = self.client.get("/api/system/status")
+        self.assertEqual(status.status_code, 200)
+        data = status.get_json()["data"]
+        self.assertGreater(data["runtime"]["process_id"], 0)
+        self.assertIn("operating_system", data["runtime"])
+        self.assertEqual(data["storage"]["records"]["users"], 0)
+
+    def test_database_backup_is_readable(self):
+        self.register("backup_user")
+        destination = Path(self.temp_directory.name) / "backup.db"
+        backup = backend.create_database_backup(destination)
+
+        self.assertTrue(backup.exists())
+        connection = sqlite3.connect(backup)
+        try:
+            count = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(count, 1)
 
 
 if __name__ == "__main__":
