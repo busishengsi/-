@@ -3,33 +3,63 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
+import platform
 import secrets
+import shutil
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from flask import Flask, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 from PIL import Image, UnidentifiedImageError
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
-INSTANCE_DIR = BASE_DIR / "instance"
+INSTANCE_DIR = Path(os.environ.get("APP_DATA_DIR", BASE_DIR / "instance")).resolve()
 UPLOAD_DIR = INSTANCE_DIR / "uploads"
 DATABASE = INSTANCE_DIR / "lost_found.db"
+LOG_DIR = INSTANCE_DIR / "logs"
+BACKUP_DIR = INSTANCE_DIR / "backups"
 ALLOWED_IMAGE_TYPES = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
 CATEGORIES = {"digital", "card", "daily", "other"}
+APP_VERSION = "2.0.0"
+STARTED_AT = datetime.now(timezone.utc)
+STARTED_MONOTONIC = time.monotonic()
 
 INSTANCE_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(exist_ok=True)
+BACKUP_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+
+def configure_logging() -> None:
+    handler = RotatingFileHandler(
+        LOG_DIR / "backend.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s %(message)s"
+    ))
+    handler.setLevel(getattr(logging, os.environ.get("APP_LOG_LEVEL", "INFO").upper(), logging.INFO))
+    app.logger.setLevel(handler.level)
+    if not any(isinstance(item, RotatingFileHandler) for item in app.logger.handlers):
+        app.logger.addHandler(handler)
+
+
+configure_logging()
 
 
 SCHEMA = """
@@ -142,6 +172,57 @@ def init_db() -> None:
     connection = connect_db()
     connection.executescript(SCHEMA)
     connection.close()
+
+
+def database_counts() -> dict:
+    connection = connect_db()
+    try:
+        return {
+            table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("users", "items", "claims", "messages")
+        }
+    finally:
+        connection.close()
+
+
+def create_database_backup(destination: Path | None = None) -> Path:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    if destination is None:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        destination = BACKUP_DIR / f"lost_found_{stamp}.db"
+    destination = destination.resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    source = connect_db()
+    target = sqlite3.connect(destination)
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+    return destination
+
+
+def runtime_status() -> dict:
+    disk = shutil.disk_usage(INSTANCE_DIR)
+    return {
+        "application": {"name": "AI lost and found", "version": APP_VERSION},
+        "runtime": {
+            "python": platform.python_version(),
+            "implementation": platform.python_implementation(),
+            "operating_system": platform.system(),
+            "process_id": os.getpid(),
+            "threads": threading.active_count(),
+            "started_at": STARTED_AT.isoformat().replace("+00:00", "Z"),
+            "uptime_seconds": round(time.monotonic() - STARTED_MONOTONIC, 3),
+        },
+        "storage": {
+            "database": DATABASE.name,
+            "upload_directory": UPLOAD_DIR.name,
+            "free_bytes": disk.free,
+            "total_bytes": disk.total,
+            "records": database_counts(),
+        },
+    }
 
 
 def success(data=None, message="ok", status=200):
@@ -284,14 +365,67 @@ def notify(recipient_id, sender_id, message_type, title, content, item_id=None, 
     )
 
 
+@app.before_request
+def start_request_timer():
+    g.request_started = time.monotonic()
+
+
+@app.after_request
+def log_request(response):
+    duration_ms = (time.monotonic() - getattr(g, "request_started", time.monotonic())) * 1000
+    response.headers["X-Process-Time-Ms"] = f"{duration_ms:.2f}"
+    response.headers["X-App-Version"] = APP_VERSION
+    app.logger.info(
+        "request method=%s path=%s status=%s duration_ms=%.2f remote=%s",
+        request.method,
+        request.path,
+        response.status_code,
+        duration_ms,
+        request.remote_addr or "unknown",
+    )
+    return response
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def file_too_large(exception):
+    return error("uploaded file exceeds the 8 MB limit", 413)
+
+
+@app.errorhandler(HTTPException)
+def http_error(exception):
+    return error(exception.description, exception.code or 500)
+
+
+@app.errorhandler(Exception)
+def unexpected_error(exception):
+    app.logger.exception("unhandled server error")
+    return error("internal server error", 500)
+
+
 @app.get("/")
 def root():
-    return jsonify({"name": "AI lost and found Python API", "status": "running"})
+    return jsonify({
+        "name": "AI lost and found Python API",
+        "version": APP_VERSION,
+        "status": "running",
+        "health": "/health",
+        "system": "/api/system/status",
+    })
 
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok"})
+    try:
+        get_db().execute("SELECT 1").fetchone()
+    except sqlite3.Error:
+        app.logger.exception("database readiness check failed")
+        return jsonify({"status": "unhealthy", "database": "unavailable"}), 503
+    return jsonify({"status": "ok", "database": "ready", "version": APP_VERSION})
+
+
+@app.get("/api/system/status")
+def system_status():
+    return success(runtime_status())
 
 
 @app.post("/api/auth/register")
@@ -663,4 +797,8 @@ init_db()
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", "5000")), debug=False)
+    app.run(
+        host=os.environ.get("APP_HOST", "127.0.0.1"),
+        port=int(os.environ.get("APP_PORT", os.environ.get("PORT", "5000"))),
+        debug=os.environ.get("APP_DEBUG", "0") == "1",
+    )
