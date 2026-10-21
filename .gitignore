@@ -1,0 +1,20 @@
+# Local virtual environment
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Runtime data
+instance/*
+!instance/.gitkeep
+
+# Test and editor files
+.pytest_cache/
+.coverage
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
