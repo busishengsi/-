@@ -31,6 +31,14 @@ class ApiFlowTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         return response.get_json()["data"]["token"]
 
+    def make_admin(self, username="admin"):
+        token = self.register(username)
+        connection = backend.connect_db()
+        connection.execute("UPDATE users SET role='admin' WHERE username=?", (username,))
+        connection.commit()
+        connection.close()
+        return token
+
     @staticmethod
     def auth(token):
         return {"Authorization": f"Bearer {token}"}
@@ -52,6 +60,14 @@ class ApiFlowTest(unittest.TestCase):
         )
         self.assertEqual(created.status_code, 201)
         item_id = created.get_json()["data"]["id"]
+
+        admin_token = self.make_admin()
+        reviewed_item = self.client.patch(
+            f"/api/admin/items/{item_id}/audit",
+            headers=self.auth(admin_token),
+            json={"action": "approve"},
+        )
+        self.assertEqual(reviewed_item.status_code, 200)
 
         listing = self.client.get("/api/items?page=bad&page_size=bad")
         self.assertEqual(listing.status_code, 200)
@@ -118,6 +134,52 @@ class ApiFlowTest(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual(count, 1)
+
+    def test_item_audit_permissions_and_visibility(self):
+        owner_token = self.register("publisher")
+        created = self.client.post(
+            "/api/items",
+            headers=self.auth(owner_token),
+            json={"type": "lost", "title": "学生证", "category": "card"},
+        )
+        item = created.get_json()["data"]
+        self.assertEqual(item["audit_status"], "pending")
+        self.assertEqual(self.client.get("/api/items").get_json()["data"]["total"], 0)
+
+        forbidden = self.client.patch(
+            f"/api/admin/items/{item['id']}/audit",
+            headers=self.auth(owner_token),
+            json={"action": "approve"},
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+        admin_token = self.make_admin("reviewer")
+        pending = self.client.get(
+            "/api/admin/items?audit_status=pending", headers=self.auth(admin_token)
+        )
+        self.assertEqual(pending.get_json()["data"]["total"], 1)
+
+        approved = self.client.patch(
+            f"/api/admin/items/{item['id']}/audit",
+            headers=self.auth(admin_token),
+            json={"action": "approve", "note": "信息完整"},
+        )
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(self.client.get("/api/items").get_json()["data"]["total"], 1)
+
+    def test_frontend_pages_are_served_by_flask(self):
+        home = self.client.get("/")
+        self.assertEqual(home.status_code, 200)
+        self.assertIn("校园失物招领平台", home.get_data(as_text=True))
+        for page in ("index.html", "list.html", "detail.html", "publish.html", "audit.html", "login.html"):
+            response = self.client.get(f"/{page}")
+            self.assertEqual(response.status_code, 200, page)
+            self.assertIn('src="app.js"', response.get_data(as_text=True))
+            response.close()
+        script = self.client.get("/app.js")
+        self.assertEqual(script.status_code, 200)
+        script.close()
+        home.close()
 
 
 if __name__ == "__main__":
