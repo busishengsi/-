@@ -25,6 +25,7 @@ from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
 INSTANCE_DIR = Path(os.environ.get("APP_DATA_DIR", BASE_DIR / "instance")).resolve()
 UPLOAD_DIR = INSTANCE_DIR / "uploads"
 DATABASE = INSTANCE_DIR / "lost_found.db"
@@ -32,7 +33,7 @@ LOG_DIR = INSTANCE_DIR / "logs"
 BACKUP_DIR = INSTANCE_DIR / "backups"
 ALLOWED_IMAGE_TYPES = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
 CATEGORIES = {"digital", "card", "daily", "other"}
-APP_VERSION = "2.0.0"
+APP_VERSION = "3.0.0"
 STARTED_AT = datetime.now(timezone.utc)
 STARTED_MONOTONIC = time.monotonic()
 
@@ -41,7 +42,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 LOG_DIR.mkdir(exist_ok=True)
 BACKUP_DIR.mkdir(exist_ok=True)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=str(FRONTEND_DIR), static_url_path="")
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     nickname TEXT NOT NULL DEFAULT '',
     phone TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
     created_at TEXT NOT NULL
 );
 
@@ -94,10 +96,15 @@ CREATE TABLE IF NOT EXISTS items (
     contact TEXT NOT NULL DEFAULT '',
     image_url TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'claimed', 'closed')),
+    audit_status TEXT NOT NULL DEFAULT 'pending' CHECK(audit_status IN ('pending', 'approved', 'rejected')),
+    audit_note TEXT NOT NULL DEFAULT '',
+    audited_by INTEGER,
+    audited_at TEXT,
     user_id INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (audited_by) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS claims (
@@ -138,6 +145,7 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
 CREATE INDEX IF NOT EXISTS idx_items_status ON items(status);
+CREATE INDEX IF NOT EXISTS idx_items_audit_status ON items(audit_status);
 CREATE INDEX IF NOT EXISTS idx_items_created_at ON items(created_at);
 CREATE INDEX IF NOT EXISTS idx_claims_item_id ON claims(item_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, is_read);
@@ -171,6 +179,19 @@ def close_db(error=None):
 def init_db() -> None:
     connection = connect_db()
     connection.executescript(SCHEMA)
+    user_columns = {row[1] for row in connection.execute("PRAGMA table_info(users)")}
+    item_columns = {row[1] for row in connection.execute("PRAGMA table_info(items)")}
+    if "role" not in user_columns:
+        connection.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+    if "audit_status" not in item_columns:
+        connection.execute("ALTER TABLE items ADD COLUMN audit_status TEXT NOT NULL DEFAULT 'approved'")
+    if "audit_note" not in item_columns:
+        connection.execute("ALTER TABLE items ADD COLUMN audit_note TEXT NOT NULL DEFAULT ''")
+    if "audited_by" not in item_columns:
+        connection.execute("ALTER TABLE items ADD COLUMN audited_by INTEGER")
+    if "audited_at" not in item_columns:
+        connection.execute("ALTER TABLE items ADD COLUMN audited_at TEXT")
+    connection.commit()
     connection.close()
 
 
@@ -290,11 +311,23 @@ def login_required(view):
     return wrapped
 
 
+def admin_required(view):
+    @login_required
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if g.current_user.get("role") != "admin":
+            return error("administrator permission is required", 403)
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def public_user(row, include_phone=False):
     data = {
         "id": row["id"],
         "username": row["username"],
         "nickname": row["nickname"] or row["username"],
+        "role": row["role"],
         "created_at": row["created_at"],
     }
     if include_phone:
@@ -314,6 +347,9 @@ def item_dict(row):
         "contact": row["contact"],
         "image_url": row["image_url"],
         "status": row["status"],
+        "audit_status": row["audit_status"],
+        "audit_note": row["audit_note"],
+        "audited_at": row["audited_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "owner": {
@@ -404,6 +440,11 @@ def unexpected_error(exception):
 
 @app.get("/")
 def root():
+    return send_from_directory(FRONTEND_DIR, "index.html")
+
+
+@app.get("/api")
+def api_info():
     return jsonify({
         "name": "AI lost and found Python API",
         "version": APP_VERSION,
@@ -497,6 +538,7 @@ def list_items():
     keyword = request.args.get("keyword", "").strip()
     category = request.args.get("category", "")
     status = request.args.get("status", "")
+    audit_status = request.args.get("audit_status", "approved")
     page = positive_int(request.args.get("page"), 1)
     page_size = positive_int(request.args.get("page_size"), 12, 100)
 
@@ -509,6 +551,9 @@ def list_items():
     if status in {"open", "claimed", "closed"}:
         conditions.append("items.status = ?")
         parameters.append(status)
+    if audit_status in {"pending", "approved", "rejected"}:
+        conditions.append("items.audit_status = ?")
+        parameters.append(audit_status)
     if keyword:
         conditions.append("(items.title LIKE ? OR items.location LIKE ? OR items.description LIKE ?)")
         parameters.extend([f"%{keyword}%"] * 3)
@@ -553,13 +598,13 @@ def create_item():
     cursor = database.execute(
         """
         INSERT INTO items(type,title,category,description,location,occurred_at,contact,
-                          image_url,status,user_id,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                          image_url,status,audit_status,user_id,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             item_type, title[:120], category, str(data.get("description", ""))[:5000],
             str(data.get("location", ""))[:255], str(data.get("occurred_at", "")) or None,
-            str(data.get("contact", ""))[:255], image_url, "open", g.current_user["id"],
+            str(data.get("contact", ""))[:255], image_url, "open", "pending", g.current_user["id"],
             timestamp, timestamp,
         ),
     )
@@ -610,7 +655,8 @@ def update_item(item_id):
     database = get_db()
     database.execute(
         """UPDATE items SET type=?,title=?,category=?,description=?,location=?,occurred_at=?,
-           contact=?,image_url=?,updated_at=? WHERE id=?""",
+           contact=?,image_url=?,audit_status='pending',audit_note='',audited_by=NULL,
+           audited_at=NULL,updated_at=? WHERE id=?""",
         (*fields.values(), now_iso(), item_id),
     )
     database.commit()
@@ -629,6 +675,51 @@ def close_item(item_id):
     database.execute("UPDATE items SET status='closed',updated_at=? WHERE id=?", (now_iso(), item_id))
     database.commit()
     return success(item_dict(get_item(item_id)), "item closed")
+
+
+@app.get("/api/admin/items")
+@admin_required
+def admin_list_items():
+    audit_status = request.args.get("audit_status", "pending")
+    parameters = []
+    where = ""
+    if audit_status in {"pending", "approved", "rejected"}:
+        where = " WHERE items.audit_status = ?"
+        parameters.append(audit_status)
+    rows = get_db().execute(
+        ITEM_SELECT + where + " ORDER BY items.created_at DESC, items.id DESC",
+        parameters,
+    ).fetchall()
+    return success({"items": [item_dict(row) for row in rows], "total": len(rows)})
+
+
+@app.patch("/api/admin/items/<int:item_id>/audit")
+@admin_required
+def audit_item(item_id):
+    row = get_item(item_id)
+    if row is None:
+        return error("item not found", 404)
+    data = body_data()
+    action = str(data.get("action", "")).strip()
+    if action not in {"approve", "reject"}:
+        return error("action must be 'approve' or 'reject'")
+    audit_status = "approved" if action == "approve" else "rejected"
+    note = str(data.get("note", "")).strip()[:500]
+    timestamp = now_iso()
+    database = get_db()
+    database.execute(
+        """UPDATE items SET audit_status=?,audit_note=?,audited_by=?,audited_at=?,updated_at=?
+           WHERE id=?""",
+        (audit_status, note, g.current_user["id"], timestamp, timestamp, item_id),
+    )
+    notify(
+        row["user_id"], g.current_user["id"], "item_audited",
+        "发布信息审核通过" if action == "approve" else "发布信息审核未通过",
+        f"你发布的「{row['title']}」{('已通过审核' if action == 'approve' else '未通过审核')}。",
+        item_id,
+    )
+    database.commit()
+    return success(item_dict(get_item(item_id)), "item audit completed")
 
 
 @app.post("/api/uploads")
@@ -680,7 +771,7 @@ def create_claim(item_id):
     item = get_item(item_id)
     if item is None:
         return error("item not found", 404)
-    if item["type"] != "found" or item["status"] != "open":
+    if item["type"] != "found" or item["status"] != "open" or item["audit_status"] != "approved":
         return error("this item is not available for claiming")
     if item["user_id"] == g.current_user["id"]:
         return error("you cannot claim an item you published")

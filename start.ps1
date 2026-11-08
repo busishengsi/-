@@ -11,4 +11,4 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-& ".venv\Scripts\python.exe" manage.py serve --port 5003
+& ".venv\Scripts\python.exe" manage.py serve --port 5000

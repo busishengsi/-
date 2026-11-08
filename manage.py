@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import app as backend
+from werkzeug.security import generate_password_hash
 
 
 def print_json(data) -> None:
@@ -61,6 +62,32 @@ def command_system_info(arguments) -> int:
     return 0
 
 
+def command_create_admin(arguments) -> int:
+    if len(arguments.password) < 6:
+        print_json({"status": "failed", "message": "密码至少需要 6 位"})
+        return 1
+    connection = backend.connect_db()
+    timestamp = backend.now_iso()
+    existing = connection.execute(
+        "SELECT id FROM users WHERE username=?", (arguments.username,)
+    ).fetchone()
+    if existing:
+        connection.execute(
+            "UPDATE users SET password_hash=?,role='admin' WHERE id=?",
+            (generate_password_hash(arguments.password), existing["id"]),
+        )
+    else:
+        connection.execute(
+            """INSERT INTO users(username,password_hash,nickname,phone,role,created_at)
+               VALUES(?,?,?,?,?,?)""",
+            (arguments.username, generate_password_hash(arguments.password), "管理员", "", "admin", timestamp),
+        )
+    connection.commit()
+    connection.close()
+    print_json({"status": "ok", "username": arguments.username, "role": "admin"})
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AI 失物招领后端操作系统工具链")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -83,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     system_info = commands.add_parser("system-info", help="显示进程、运行时和存储信息")
     system_info.set_defaults(handler=command_system_info)
+
+    create_admin = commands.add_parser("create-admin", help="创建或重置审核管理员")
+    create_admin.add_argument("username", help="管理员账号")
+    create_admin.add_argument("password", help="管理员密码，至少 6 位")
+    create_admin.set_defaults(handler=command_create_admin)
     return parser
 
 
