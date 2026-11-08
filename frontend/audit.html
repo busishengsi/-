@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>审核管理 - 失物招领平台</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: "Microsoft Yahei", sans-serif;
+    }
+    body {
+      background-color: #f4f7fc;
+      color: #333;
+      line-height: 1.6;
+    }
+    /* 导航栏 与其他页面保持一致蓝色 */
+    header {
+      background: #1976d2;
+      color: #fff;
+      padding: 1rem 5%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .nav-wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 600;
+    }
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      margin: 0 12px;
+      transition: all 0.25s;
+    }
+    nav a:hover {
+      color: #bbdefb;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    h2 {
+      color: #1976d2;
+      margin-bottom: 24px;
+    }
+    .audit-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(25, 118, 210, 0.08);
+      transition: 0.3s;
+    }
+    .audit-card:hover {
+      box-shadow: 0 4px 16px rgba(25, 118, 210, 0.12);
+    }
+    .audit-card h3 {
+      color: #222;
+      margin-bottom: 8px;
+    }
+    .audit-info {
+      color: #666;
+      font-size: 0.95rem;
+      margin-bottom: 14px;
+    }
+    .status-tag {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      margin-bottom:12px;
+    }
+    .pending {
+      background:#e3f2fd;
+      color:#1976d2;
+    }
+    .pass {
+      background:#e8f5e9;
+      color:#2e7d32;
+    }
+    .reject {
+      background:#ffebee;
+      color:#c62828;
+    }
+    .btn-group button {
+      padding:8px 18px;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      font-size:0.95rem;
+      transition:0.25s;
+      margin-right:10px;
+    }
+    .btn-pass {
+      background:#1976d2;
+      color:white;
+    }
+    .btn-pass:hover {
+      background:#1565c0;
+    }
+    .btn-reject {
+      background:#f44336;
+      color:white;
+    }
+    .btn-reject:hover {
+      background:#d32f2f;
+    }
+    footer {
+      background:#1976d2;
+      color:#fff;
+      text-align:center;
+      padding:16px;
+      margin-top:40px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav-wrap">
+      <div class="logo">失物招领平台</div>
+      <nav>
+        <a href="index.html">首页列表</a>
+        <a href="publish.html">发布信息</a>
+        <a href="audit.html">审核管理</a>
+        <a href="login.html">登录</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <h2>开发人员审核中心</h2>
+    <div id="auditList">
+      <!-- 审核卡片JS渲染 -->
+    </div>
+  </div>
+
+  <footer>
+    <p>失物招领平台 © 2026 课程项目</p>
+  </footer>
+
+  
+  <script src="app.js"></script>
+</body>
+</html>
+
+

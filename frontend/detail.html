@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>物品详情 - 失物招领平台</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: "Microsoft Yahei", sans-serif;
+    }
+    body {
+      background-color: #f4f7fc;
+      color: #333;
+      line-height: 1.6;
+    }
+    header {
+      background: #1976d2;
+      color: #fff;
+      padding: 1rem 5%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .nav-wrap {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 600;
+    }
+    nav a {
+      color: #fff;
+      text-decoration: none;
+      margin: 0 12px;
+      transition: all 0.25s;
+    }
+    nav a:hover {
+      color: #bbdefb;
+    }
+    .container {
+      max-width: 800px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+    .detail-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 2px 10px rgba(25,118,210,0.08);
+      transition: 0.3s;
+    }
+    .detail-card:hover {
+      box-shadow: 0 4px 16px rgba(25,118,210,0.12);
+    }
+    .status-tag {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      margin-bottom:16px;
+    }
+    .pending {
+      background:#e3f2fd;
+      color:#1976d2;
+    }
+    .pass {
+      background:#e8f5e9;
+      color:#2e7d32;
+    }
+    .reject {
+      background:#ffebee;
+      color:#c62828;
+    }
+    .detail-card h2 {
+      color:#1976d2;
+      margin-bottom:20px;
+      font-size:1.6rem;
+    }
+    .info-row{
+      display:flex;
+      margin-bottom:14px;
+      font-size:1rem;
+    }
+    .info-label{
+      width:110px;
+      color:#666;
+      font-weight:500;
+    }
+    .info-value{
+      flex:1;
+      color:#222;
+    }
+    .btn-back{
+      margin-top:28px;
+      padding:11px 26px;
+      background:#1976d2;
+      color:#fff;
+      border:none;
+      border-radius:8px;
+      font-size:1rem;
+      cursor:pointer;
+      transition:0.25s;
+      box-shadow:0 2px 6px rgba(25,118,210,0.18);
+    }
+    .btn-back:hover{
+      background:#1565c0;
+    }
+    footer {
+      background:#1976d2;
+      color:#fff;
+      text-align:center;
+      padding:16px;
+      margin-top:40px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav-wrap">
+      <div class="logo">失物招领平台</div>
+      <nav>
+        <a href="index.html">首页</a>
+        <a href="list.html">物品列表</a>
+        <a href="publish.html">发布信息</a>
+        <a href="audit.html">审核管理</a>
+        <a href="login.html">登录</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="detail-card">
+      <span class="status-tag" id="statusTag"></span>
+      <h2 id="itemTitle"></h2>
+      <div class="info-row">
+        <span class="info-label">信息类型：</span>
+        <span class="info-value" id="itemType"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">物品分类：</span>
+        <span class="info-value" id="itemCategory"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">详细描述：</span>
+        <span class="info-value" id="itemDesc"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">联系方式：</span>
+        <span class="info-value" id="itemContact"></span>
+      </div>
+      <button class="btn-back" onclick="goBack()">返回物品列表</button>
+    </div>
+  </div>
+
+  <footer>
+    <p>失物招领平台 © 2026 课程项目</p>
+  </footer>
+
+  
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+

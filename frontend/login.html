@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh‑CN">
+<head>
+  <meta charset="UTF‑8">
+  <meta name="viewport" content="width=device‑width, initial‑scale=1.0">
+  <title>登录 | AI失物招领平台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font‑awesome@4.7.0/css/font‑awesome.min.css">
+</head>
+<body class="bg-gradient-to-br from-blue-500 to-blue-700 min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-md">
+    <div class="bg-white rounded-xl shadow-xl p-8">
+      <h2 class="text-2xl font-bold text-center mb-6 text-gray-800">
+        <i class="fa fa-search text-blue-600"></i> AI失物招领平台
+      </h2>
+      <!-- 登录表单 -->
+      <div id="loginForm">
+        <div class="mb-4">
+          <label class="block mb-1 text-sm font-medium text-gray-600">账号</label>
+          <input type="text" placeholder="请输入账号" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <div class="mb-6">
+          <label class="block mb-1 text-sm font-medium text-gray-600">密码</label>
+          <input type="password" placeholder="请输入密码" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <button id="loginBtn" class="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow">登录</button>
+        <p class="text-center mt-4 text-sm text-gray-500">
+          没有账号？<a href="#" id="toRegister" class="text-blue-600 hover:underline">去注册</a>
+        </p>
+      </div>
+      <!-- 注册表单 默认隐藏 -->
+      <div id="registerForm" class="hidden">
+        <div class="mb-4">
+          <label class="block mb-1 text-sm font-medium text-gray-600">账号</label>
+          <input type="text" placeholder="请设置账号" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <div class="mb-4">
+          <label class="block mb-1 text-sm font-medium text-gray-600">密码</label>
+          <input type="password" placeholder="请设置密码" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <div class="mb-6">
+          <label class="block mb-1 text-sm font-medium text-gray-600">确认密码</label>
+          <input type="password" placeholder="再次输入密码" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+        </div>
+        <button class="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition-all duration-200 shadow">注册</button>
+        <p class="text-center mt-4 text-sm text-gray-500">
+          已有账号？<a href="#" id="toLogin" class="text-blue-600 hover:underline">返回登录</a>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  
+  <script src="app.js"></script>
+</body>
+</html>
+
+
